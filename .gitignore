@@ -1,6 +1,6 @@
 bin/
-dist/
 *.log
 .env
 .DS_Store
-node_modules/
+web/node_modules/
+web/dist/

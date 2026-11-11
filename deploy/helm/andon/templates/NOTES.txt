@@ -1,0 +1,11 @@
+Andon deployed.
+
+Dashboard (NodePort): http://localhost:{{ .Values.api.service.nodePort }}
+{{- if .Values.monitoring.enabled }}
+Grafana (NodePort):   http://localhost:{{ .Values.monitoring.grafanaNodePort }}  (admin/admin)
+{{- end }}
+
+Failover demo:
+  kubectl -n {{ .Release.Namespace }} get pods -l app=processor
+  kubectl -n {{ .Release.Namespace }} delete pod -l app=processor --field-selector=status.phase=Running --wait=false
+  # watch the dashboard: events keep flowing, no gaps in part counts.

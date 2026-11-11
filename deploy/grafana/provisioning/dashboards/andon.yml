@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: andon
+    folder: Andon
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,5 +1,5 @@
 // Package station simulates a single manufacturing station (PLC) with a
-// state machine, cycle timing, fault injection, and a Modbus register map.
+// state machine, cycle timing, fault injection, scrap, and a Modbus register map.
 package station
 
 import (
@@ -42,10 +42,12 @@ const (
 	RegPartCount   uint16 = 2
 	RegTempC10     uint16 = 3
 	RegFaultCode   uint16 = 4
+	RegScrapCount  uint16 = 5
 	RegTargetCycle uint16 = 10 // RW
 	RegFaultInject uint16 = 11 // RW
 
-	numRegs = 16
+	// NumRegs is the size of the register bank.
+	NumRegs = 16
 )
 
 // Config tunes the simulation.
@@ -53,6 +55,7 @@ type Config struct {
 	ID            int
 	TargetCycleMs uint16
 	FaultProb     float64       // probability of a spontaneous fault per cycle
+	ScrapProb     float64       // probability a cycle produces scrap instead of a good part
 	FaultDuration time.Duration // how long a fault lasts before auto-recovering
 	Jitter        float64       // +/- fraction of target cycle time
 }
@@ -62,8 +65,9 @@ func DefaultConfig(id int) Config {
 	return Config{
 		ID:            id,
 		TargetCycleMs: 1000,
-		FaultProb:     0.02,
-		FaultDuration: 3 * time.Second,
+		FaultProb:     0.01,
+		ScrapProb:     0.02,
+		FaultDuration: 5 * time.Second,
 		Jitter:        0.15,
 	}
 }
@@ -73,7 +77,7 @@ type Station struct {
 	cfg Config
 
 	mu    sync.RWMutex
-	regs  [numRegs]uint16
+	regs  [NumRegs]uint16
 	rng   *rand.Rand
 	temp  float64
 	fault time.Time // when the current fault clears
@@ -100,7 +104,6 @@ func (s *Station) Run(ctx context.Context) {
 		inject := s.regs[RegFaultInject]
 		s.mu.RUnlock()
 
-		// Fault handling.
 		if inject == 1 || s.rng.Float64() < s.cfg.FaultProb {
 			s.enterFault(uint16(100 + s.rng.Intn(5)))
 		}
@@ -116,7 +119,6 @@ func (s *Station) Run(ctx context.Context) {
 			continue
 		}
 
-		// One production cycle.
 		jitter := 1 + (s.rng.Float64()*2-1)*s.cfg.Jitter
 		cycle := time.Duration(float64(target) * jitter)
 		select {
@@ -132,8 +134,12 @@ func (s *Station) completeCycle(cycle time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.regs[RegCycleMs] = uint16(cycle.Milliseconds())
-	s.regs[RegPartCount]++
-	s.temp += (s.rng.Float64() - 0.45) * 0.5 // slow random walk upward
+	if s.rng.Float64() < s.cfg.ScrapProb {
+		s.regs[RegScrapCount]++
+	} else {
+		s.regs[RegPartCount]++
+	}
+	s.temp += (s.rng.Float64() - 0.45) * 0.5
 	s.regs[RegTempC10] = uint16(s.temp * 10)
 }
 
@@ -170,7 +176,7 @@ func (s *Station) set(addr, v uint16) {
 
 // ReadHolding implements modbus.RegisterStore.
 func (s *Station) ReadHolding(addr, qty uint16) ([]uint16, error) {
-	if int(addr)+int(qty) > numRegs {
+	if int(addr)+int(qty) > NumRegs {
 		return nil, modbus.ErrIllegalAddress
 	}
 	s.mu.RLock()
@@ -182,7 +188,7 @@ func (s *Station) ReadHolding(addr, qty uint16) ([]uint16, error) {
 
 // WriteHolding implements modbus.RegisterStore. Only RW registers accept writes.
 func (s *Station) WriteHolding(addr uint16, vals []uint16) error {
-	if int(addr)+len(vals) > numRegs {
+	if int(addr)+len(vals) > NumRegs {
 		return modbus.ErrIllegalAddress
 	}
 	for i := range vals {
@@ -196,7 +202,7 @@ func (s *Station) WriteHolding(addr uint16, vals []uint16) error {
 	for i, v := range vals {
 		a := addr + uint16(i)
 		if a == RegTargetCycle && v < 50 {
-			v = 50 // floor to keep the sim sane
+			v = 50
 		}
 		s.regs[a] = v
 	}

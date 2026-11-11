@@ -1,0 +1,38 @@
+image:
+  registry: ""            # e.g. ghcr.io/hareshgoyal06 ; empty = local images (kind load)
+  tag: dev
+  pullPolicy: IfNotPresent
+
+plcSim:
+  stations: 6
+  basePort: 5020
+
+gateway:
+  pollInterval: 100ms
+
+processor:
+  replicas: 3
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+
+api:
+  replicas: 2
+  service:
+    type: NodePort
+    nodePort: 30080
+
+kafka:
+  image: apache/kafka:3.9.0
+  storage: 2Gi
+
+timescale:
+  image: timescale/timescaledb:latest-pg16
+  storage: 2Gi
+  user: andon
+  password: andon
+  database: andon
+
+monitoring:
+  enabled: true   # deploys Prometheus + Grafana (single-pod, demo-grade)
+  grafanaNodePort: 30300

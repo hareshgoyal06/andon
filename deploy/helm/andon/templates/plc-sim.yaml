@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: plc-sim
+spec:
+  selector: { app: plc-sim }
+  ports:
+  {{- range $i := until (int .Values.plcSim.stations) }}
+    - { name: s{{ add1 $i }}, port: {{ add (int $.Values.plcSim.basePort) $i }} }
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plc-sim
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: plc-sim } }
+  template:
+    metadata: { labels: { app: plc-sim } }
+    spec:
+      containers:
+        - name: plc-sim
+          image: {{ include "andon.image" (dict "root" . "name" "plc-sim") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: STATIONS, value: {{ .Values.plcSim.stations | quote }} }
+            - { name: BASE_PORT, value: {{ .Values.plcSim.basePort | quote }} }
+          ports: [{ name: health, containerPort: 8080 }]
+          livenessProbe: { httpGet: { path: /healthz, port: health }, periodSeconds: 10 }

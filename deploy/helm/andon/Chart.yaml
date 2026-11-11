@@ -1,0 +1,6 @@
+apiVersion: v2
+name: andon
+description: Real-time factory line control plane (Go + Kafka + React over Modbus TCP)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

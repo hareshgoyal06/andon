@@ -1,0 +1,8 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: andon
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 30080 }   # api/dashboard
+      - { containerPort: 30300, hostPort: 30300 }   # grafana

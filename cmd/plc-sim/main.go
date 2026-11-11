@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -16,9 +18,19 @@ import (
 	"github.com/hareshgoyal06/andon/pkg/station"
 )
 
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
 func main() {
-	stations := flag.Int("stations", 5, "number of stations to simulate")
-	basePort := flag.Int("base-port", 5020, "first TCP port; station i listens on base-port+i")
+	stations := flag.Int("stations", envInt("STATIONS", 6), "number of stations to simulate")
+	basePort := flag.Int("base-port", envInt("BASE_PORT", 5020), "first TCP port; station i listens on base-port+i")
+	healthAddr := flag.String("health-addr", ":8080", "health endpoint address")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -28,7 +40,7 @@ func main() {
 	var wg sync.WaitGroup
 	for i := 0; i < *stations; i++ {
 		cfg := station.DefaultConfig(i + 1)
-		cfg.TargetCycleMs = uint16(800 + 100*i) // staggered so a bottleneck emerges naturally
+		cfg.TargetCycleMs = uint16(800 + 80*i) // staggered so a bottleneck emerges naturally
 		st := station.New(cfg)
 
 		addr := fmt.Sprintf(":%d", *basePort+i)
@@ -50,7 +62,13 @@ func main() {
 		}()
 	}
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	hs := &http.Server{Addr: *healthAddr, Handler: mux}
+	go func() { _ = hs.ListenAndServe() }()
+
 	<-ctx.Done()
 	log.Info("shutting down")
+	_ = hs.Close()
 	wg.Wait()
 }
